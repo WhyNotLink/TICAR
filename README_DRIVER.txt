@@ -130,7 +130,7 @@
   - 如需4轮全用: Motor_EnableChannels(0x0F)
   - AB 和 CD 各由一个 TB6612 驱动，硬件 EN 由拨码开关 MAB_EN/MCD_EN 控制
   - PID闭环在 TIMG7 ZERO中断中自动运行 (10ms周期)
-  - 编码器分辨率: 13PPR × 4(正交) × 30(减速比) = 1560计数/圈
+  - 编码器分辨率: 12PPR × 4(正交) × 28(减速比) = 1344计数/圈 (MG513X GMR)
   - 编码器中断在 GROUP1_IRQHandler 中统一处理
 
 --------- 4.2 A4988 步进电机 (bsp_a4988.h) ---------

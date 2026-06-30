@@ -9,8 +9,8 @@
 #include "bsp_motor.h"
 
 /* ====================== 编码器分辨率 ====================== */
-/* MG513: 13 PPR × 4 (正交) × 30 (减速比) = 1560 计数/输出轴转 */
-#define ENCODER_RESOLUTION  1560
+/* MG513X GMR编码器: 12 PPR × 4 (正交) × 28 (减速比) = 1344 计数/输出轴转 */
+#define ENCODER_RESOLUTION  1344
 
 /* ====================== PID 限幅 ====================== */
 #define PID_OUTPUT_MAX   1000
@@ -307,10 +307,9 @@ void Motor_PIDTask(void)
         m->prev_encoder_count = enc_now;
 
         /* ---- 计算当前 RPM ---- */
-        /* enc_delta 是 20ms 内的计数增量 */
-        /* RPM = (delta * 60s/min) / (分辨率 * 0.02s) */
-        /* RPM = delta * 3000 / ENCODER_RESOLUTION */
-        m->measured_rpm = (int32_t)((float)enc_delta * 3000.0f / (float)ENCODER_RESOLUTION);
+        /* enc_delta 是 10ms 内的计数增量 */
+        /* RPM = delta × 60 / (ENCODER_RESOLUTION × 0.01) = delta × 6000 / ENCODER_RESOLUTION */
+        m->measured_rpm = (int32_t)((float)enc_delta * 6000.0f / (float)ENCODER_RESOLUTION);
 
         /* ---- 增量式 PID ---- */
         int32_t error    = (int32_t)m->target_speed - m->measured_rpm;
