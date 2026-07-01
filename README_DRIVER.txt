@@ -66,7 +66,7 @@
   OUT1: PA24  OUT2: PA25  OUT3: PB24  OUT4: PA22
   OUT5: PA14  OUT6: PA17  OUT7: PB17  OUT8: PB18
 
-  【按键 2个 (中断触发, 下降沿)】
+  【按键 2个 (轮询, 10ms消抖)】
   KEY1: PA0    KEY2: PA1
 
   【LED 4个 (初始值=SET=高电平=灯灭)】
@@ -76,7 +76,7 @@
   BEEP: PA7
 
   【串口 UART (不定长接收)】
-  TX: PA10   RX: PA11 (UART0, 9600bps/8N1, RX中断+RX超时帧检测)
+  TX: PA10   RX: PA11 (UART0, 9600bps/8N1, DMA_RX+RX超时帧检测)
 
   【调试口 (SWD)】
   SWDIO: PA19     SWCLK: PA20
@@ -87,9 +87,6 @@
     MAB_EN  → TB6612-1 EN脚      MCD_EN  → TB6612-2 EN脚
     MS1/MS2/MS3 → A4988 微步细分脚 (M0/M1/M2)
   软件无需读取开关状态；开关闭合=模块使能，断开=模块禁用。
-
-  【调试口 (SWD)】
-  SWDIO: PA19     SWCLK: PA20
 
 ================================================================================
   三、定时器/外设时钟配置 (BUSCLK=32MHz)
@@ -114,7 +111,7 @@
 
   I2C_0        ── I2C0, 400kHz (MPU6050 通信)
 
-  UART_0       ── UART0, 9600bps/8N1, RX 中断 + RX 超时(20位周期≈2.08ms)
+  UART0        ── UART0, 9600bps/8N1, DMA_RX + RX 超时(20位周期≈2.08ms)
                   不定长帧检测: RTIM 超时触发帧就绪标志
 
 ================================================================================
@@ -185,7 +182,7 @@
 
   注意:
   - SysConfig: TIMG12, 4MHz, 32位向下计数, 40ms周期
-  - 驱动中手动读写硬件计数器 (DL_TimerG_getCount) 测量脉宽
+  - 驱动中手动读写硬件计数器 (DL_Timer_getTimerCount) 测量脉宽
   - 不使用捕获中断, 无需在 GROUP1_IRQHandler 中添加超声波代码
   - 10µs TRIG 脉冲 → 等待 ECHO 上升/下降沿 → 计算距离
 
@@ -220,10 +217,10 @@
 
   【SysConfig 配置步骤】
   1. 在 SysConfig GUI 中添加 UART 模块
-  2. Name: "UART_0", 选择 UART0 外设
+  2. Name: "UART0", 选择 UART0 外设
   3. TX Pin: PA10, RX Pin: PA11
   4. Baud Rate: 9600, Data Bits: 8, Parity: None, Stop Bits: 1
-  5. 勾选 "Enable RX FIFO Interrupts" (接收中断)
+  5. 勾选中断: DMA_DONE_RX, DMA_DONE_TX, RX_TIMEOUT_ERROR
   6. 保存生成
 
   初始化:     UART_Init(9600)
@@ -338,8 +335,8 @@
   1. OLED 使用软件 I2C (PA15/PA16)，与硬件 I2C1 引脚复用。
      如果改用硬件 I2C, 请使用 hard_oled.c 并配置 I2C1 外设。
 
-  2. 电机编码器和按键共用 GROUP1_IRQHandler (GPIOA/GPIOB 多路中断)。
-     修改 bsp_motor.c 中断处理时注意不要影响按键功能。
+  2. 电机编码器使用 GROUP1_IRQHandler (GPIOA/GPIOB 多路中断)。
+     按键使用轮询模式 (Button_Task), 不占用中断。
 
   3. 超声波使用 TIMG12 硬件计数器直接读值, 不占用中断。
 
@@ -353,5 +350,5 @@
      CC=0 → 100% HIGH → 全速; CC=1000 → 0% HIGH → 停止。
 
 ================================================================================
-  版本: v2.0   日期: 2026-07   LIN
+  版本: v2.0   日期: 2026-07   基于 SysConfig 实际生成参数
 ================================================================================
