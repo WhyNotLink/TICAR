@@ -7,20 +7,24 @@
   ├── empty.syscfg              <- SysConfig 引脚/外设配置
   ├── empty.c                   <- 主程序示例
   ├── ti_msp_dl_config.h/.c     <- SysConfig 自动生成（不要手动修改）
+  ├── README_DRIVER.txt         <- 本文件
   └── bsp/
       ├── board.h / board.c     <- 公共头文件(类型定义、延时函数、OLED引脚映射)
       ├── soft_oled.h / .c      <- OLED 0.96寸 IIC 单色屏驱动 (软件I2C)
+      ├── hard_oled.h / .c      <- OLED 硬件I2C驱动 (备用, 当前未编译)
       ├── oledfont.h            <- OLED 字库
       ├── bmp.h                 <- OLED 位图数据
       ├── bsp_motor.h / .c      <- TB6612 直流电机 + MG513 编码器驱动 (4通道)
-      ├── bsp_a4988.h / .c      <- A4988 步进电机驱动 (2通道)
+      ├── bsp_stepper.h / .c      <- A4988 步进电机驱动 (脉冲频率控速)
+      ├── bsp_servo_180.h / .c    <- 180°舵机驱动 (50Hz PWM, 占空比控角度)
+      ├── bsp_servo_360.h / .c    <- 360°舵机驱动 (50Hz PWM, 占空比控转速)
       ├── bsp_mpu6050.h / .c    <- MPU6050 六轴陀螺仪驱动 (I2C0)
       ├── bsp_ultrasonic.h / .c <- HC-SR04 超声波测距驱动
       ├── bsp_grayscale.h / .c  <- 8通道灰度传感器驱动
       ├── bsp_button.h / .c     <- 2路按键驱动 (带消抖)
       ├── bsp_led.h / .c        <- 4路LED驱动
       ├── bsp_buzzer.h / .c     <- 蜂鸣器驱动
-      └── README_DRIVER.txt     <- 本文件
+      └── bsp_uart.h / .c       <- 串口驱动 (DMA不定长接收)
 
 ================================================================================
   一、开发环境搭建
@@ -52,6 +56,16 @@
   【A4988 步进电机 (2通道)】
   PTZ1_PWM : PB2  (TIMA1-C0)    PTZ1_DIR: PA12
   PTZ2_PWM : PB3  (TIMG6-C1)    PTZ2_DIR: PB23
+
+  【180°舵机 (2通道, 50Hz PWM)】
+  SERVO1 : PB2  (TIMA1-C0, 500kHz, period=10000)
+  SERVO2 : PB3  (TIMG6-C1, 4MHz,   period=80000)
+  0°=0.5ms, 90°=1.5ms, 180°=2.5ms
+
+  【360°舵机 (2通道, 50Hz PWM, 连续旋转)】
+  SERVO360_1 : PB2  (TIMA1-C0, 配置同上)
+  SERVO360_2 : PB3  (TIMG6-C1, 配置同上)
+  Stop=1.5ms, CW<1.5ms, CCW>1.5ms
 
   【MPU6050 陀螺仪 (I2C0, 400kHz)】
   SDA_MPU: PA28   SCL_MPU: PA31
@@ -96,11 +110,17 @@
                   4通道: CC0(PA8), CC1(PA9), CC2(PB12), CC3(PB13)
                   Edge-Aligned, INIT_VAL_LOW, 无反转 → HIGH=导通电机
 
-  PTZ1_PWM     ── TIMA1, 32MHz÷8÷100=40kHz, period=1000 → 动态调频
-                  CC0(PB2), duty=50%
+  PTZ1_PWM     ── TIMA1, 步进: 40kHz (prescaler=99), 舵机: 500kHz (prescaler=63)
+                  CC0(PB2)
+                  ⚠ _Init(ch) 自动配置 prescaler+period, SysConfig 只需配引脚映射
 
-  PTZ2_PWM     ── TIMG6, 32MHz÷8÷100=40kHz, period=1000 → 动态调频
-                  CC1(PB3), duty=50%
+  PTZ2_PWM     ── TIMG6, 步进: 40kHz (prescaler=99), 舵机: 4MHz (prescaler=0)
+                  CC1(PB3)
+                  ⚠ _Init(ch) 自动配置 prescaler+period, SysConfig 只需配引脚映射
+
+  SERVO1_50HZ  ── 同 PTZ1_PWM, 由 Servo_Init(SERVO_PTZ1) 或 Servo360_Init(SERVO360_PTZ1) 配置
+
+  SERVO2_50HZ  ── 同 PTZ2_PWM, 由 Servo_Init(SERVO_PTZ2) 或 Servo360_Init(SERVO360_PTZ2) 配置
 
   PID_TIMER    ── TIMG7, 32MHz÷8÷4=1MHz, load=9999 → 中断周期=10ms
                   触发 ZERO 事件中断, 运行 PID 闭环和编码器速度计算
@@ -139,29 +159,59 @@
   - 编码器分辨率: 12PPR × 4(正交) × 28(减速比) = 1344计数/圈 (MG513X GMR)
   - 编码器中断在 GROUP1_IRQHandler 中统一处理
 
---------- 4.2 A4988 步进电机 (bsp_a4988.h) ---------
+--------- 4.2 A4988 步进电机 (bsp_stepper.h) ---------
 
-  初始化:     A4988_Init()
+  初始化:     A4988_Init(PTZ1)                     // 按通道初始化, 自配 TIMA1 为 40kHz
+              A4988_Init(PTZ2)                     // 按通道初始化, 自配 TIMG6 为 40kHz
   设置方向:   A4988_SetDirection(PTZ1, A4988_DIR_CW)
-  设置速度:   A4988_SetSpeed(PTZ1, 1000)         // 1000步/秒
-  移动步数:   A4988_Step(PTZ1, 200)              // 移动200步(阻塞)
+  设置速度:   A4988_SetSpeed(PTZ1, 1000)           // 1000步/秒, 动态修改定时器周期
+  移动步数:   A4988_Step(PTZ1, 200)                // 移动200步(阻塞)
   使能/禁用:  A4988_Enable(PTZ1) / A4988_Disable(PTZ1)
 
   注意:
+  - _Init(ch) 自配 prescaler=99 + period=1000 (40kHz脉冲时钟), 无需改 SysConfig
+  - 调用顺序: Init → SetDirection → SetSpeed → Enable (后脉冲开始输出)
+  - PTZ1 使用 TIMA1 CC0 硬件PWM脉冲, PTZ2 使用 TIMG6 CC1
   - 硬件 EN 和微步细分(MS1/MS2/MS3)由拨码开关直连A4988, 软件不控制
-  - PTZ1 使用 TIMA1 CC0 硬件PWM脉冲
-  - PTZ2 使用 TIMG6 CC1 硬件PWM脉冲
-  - 速度通过动态修改定时器周期实现, 频率范围可调
-  - A4988_Enable/Disable 控制软件侧是否输出脉冲 (硬件EN由拨码开关控制)
+  - Enable/Disable 控制软件侧是否输出脉冲 (硬件EN由拨码开关控制)
+  - PTZ1 方向脚: PA12, PTZ2 方向脚: PB23 (方向由 SetDirection 控制)
 
---------- 4.3 MPU6050 (bsp_mpu6050.h) ---------
+--------- 4.3 180°舵机 (bsp_servo_180.h) ---------
+
+  初始化:     Servo_Init(SERVO_PTZ1)                // 按通道初始化, 自配 TIMA1 50Hz
+              Servo_Init(SERVO_PTZ2)                // 按通道初始化, 自配 TIMG6 50Hz
+  设置角度:   Servo_SetAngle(SERVO_PTZ1, 90)        // 转到90°位置
+              Servo_SetAngle(SERVO_PTZ2, 45)        // 转到45°位置
+
+  注意:
+  - 角度范围 0~180, 50Hz PWM, 占空比 2.5%~12.5%
+  - _Init(ch) 自配 prescaler + period, 无需改 SysConfig
+  - PTZ1: TIMA1 prescaler=63 → 500kHz, period=10000 → 50Hz
+  - PTZ2: TIMG6 prescaler=0  → 4MHz,   period=80000 → 50Hz
+
+--------- 4.4 360°舵机 (bsp_servo_360.h) ---------
+
+  初始化:     Servo360_Init(SERVO360_PTZ1)           // 按通道初始化, 自配 TIMA1 50Hz
+              Servo360_Init(SERVO360_PTZ2)           // 按通道初始化, 自配 TIMG6 50Hz
+  设置转速:   Servo360_SetSpeed(SERVO360_PTZ1, 50)   // 正转50%速度
+              Servo360_SetSpeed(SERVO360_PTZ2, -30)   // 反转30%速度
+              Servo360_SetSpeed(SERVO360_PTZ1, 0)     // 停止
+
+  注意:
+  - 速度范围 -100~100, 50Hz PWM, 占空比 2.5%~12.5%
+  - 1.5ms = 停止, < 1.5ms = 正转, > 1.5ms = 反转
+  - _Init(ch) 自配 prescaler + period, 和 180°舵机配置相同, 无需改 SysConfig
+  - PTZ1: TIMA1 prescaler=63 → 500kHz, period=10000 → 50Hz
+  - PTZ2: TIMG6 prescaler=0  → 4MHz,   period=80000 → 50Hz
+
+--------- 4.5 MPU6050 (bsp_mpu6050.h) ---------
 
   初始化:     MPU6050_Init()
   更新数据:   MPU6050_Update()                   // 每次读取前调用
   读加速度:   float ax = MPU6050_GetAccelX_G()   // 单位: g
   读角速度:   float gz = MPU6050_GetGyroZ_DPS()  // 单位: 度/秒
 
---------- 4.4 OLED 屏幕 (soft_oled.h) ---------
+--------- 4.6 OLED 屏幕 (soft_oled.h) ---------
 
   初始化:     OLED_Init()
   清屏:       OLED_Clear()
@@ -175,7 +225,7 @@
   模式: 0=反色, 1=正常
   汉字序号: 参考 oledfont.h 中 Hzk1 数组 (0=中,1=景,2=园...)
 
---------- 4.5 超声波 HC-SR04 (bsp_ultrasonic.h) ---------
+--------- 4.7 超声波 HC-SR04 (bsp_ultrasonic.h) ---------
 
   初始化:     Ultrasonic_Init()
   测距:       float dist = Ultrasonic_GetDistance() // 返回cm, 超时=-1
@@ -186,12 +236,12 @@
   - 不使用捕获中断, 无需在 GROUP1_IRQHandler 中添加超声波代码
   - 10µs TRIG 脉冲 → 等待 ECHO 上升/下降沿 → 计算距离
 
---------- 4.6 灰度传感器 (bsp_grayscale.h) ---------
+--------- 4.8 灰度传感器 (bsp_grayscale.h) ---------
 
   读单通道:   uint8_t v = Grayscale_Read(0)      // ch=0~7, 0=黑 1=白
   读全部:     uint8_t all = Grayscale_ReadAll()   // bit0~bit7 对应 OUT1~OUT8
 
---------- 4.7 按键 (bsp_button.h) ---------
+--------- 4.9 按键 (bsp_button.h) ---------
 
   初始化:     Button_Init()
   任务轮询:   Button_Task()                       // 每10ms调用一次
@@ -199,21 +249,21 @@
   读按下事件: Button_GetPress(0)                  // 下降沿触发, 自动清除
   读长按:     Button_GetLongPress(0, 1000)        // 按下超过1000ms返回1
 
---------- 4.8 LED (bsp_led.h) ---------
+--------- 4.10 LED (bsp_led.h) ---------
 
   初始化:     LED_Init()
   开/关/翻转: LED_On(LED1) / LED_Off(LED1) / LED_Toggle(LED1)
   全部控制:   LED_AllOn() / LED_AllOff()
   注意:      LED 低电平点亮 (DL_GPIO_clearPins=亮, setPins=灭)
 
---------- 4.9 蜂鸣器 (bsp_buzzer.h) ---------
+--------- 4.11 蜂鸣器 (bsp_buzzer.h) ---------
 
   初始化:     Buzzer_Init()
   鸣叫:       Buzzer_Beep(200)                   // 鸣叫200ms(阻塞)
   多次鸣叫:   Buzzer_BeepTimes(3, 100, 50)       // 鸣3次,100ms on,50ms off
   注意:      有源蜂鸣器, 低电平响
 
---------- 4.10 串口 (bsp_uart.h) ---------
+--------- 4.12 串口 (bsp_uart.h) ---------
 
   【SysConfig 配置步骤】
   1. 在 SysConfig GUI 中添加 UART 模块
@@ -275,13 +325,20 @@
       Buzzer_Beep(100);                  // 蜂鸣报警
   }
 
-【示例3: 步进云台控制】
-  #include "bsp_a4988.h"
+【示例3: 步进云台控制 (PTZ1=A4988, PTZ2=180°舵机混用)】
+  #include "bsp_stepper.h"
+  #include "bsp_servo_180.h"
 
   // 确保拨码开关 PTZ1_EN 闭合(硬件使能)
+  A4988_Init(PTZ1);
   A4988_SetDirection(PTZ1, A4988_DIR_CW);
   A4988_SetSpeed(PTZ1, 800);
-  A4988_Step(PTZ1, 200);                 // 顺时针转200步
+  A4988_Enable(PTZ1);                    // 开始脉冲, 800步/秒
+
+  Servo_Init(SERVO_PTZ2);                // PTZ2 独立初始化为 180°舵机
+  Servo_SetAngle(SERVO_PTZ2, 90);        // PTZ2 舵机转到 90°
+
+  说明: PTZ1 和 PTZ2 可混用不同类型, 各自 _Init(ch) 独立配时钟。
 
 【示例4: OLED 显示传感器数据】
   #include "soft_oled.h"
@@ -335,7 +392,7 @@
   1. OLED 使用软件 I2C (PA15/PA16)，与硬件 I2C1 引脚复用。
      如果改用硬件 I2C, 请使用 hard_oled.c 并配置 I2C1 外设。
 
-  2. 电机编码器使用 GROUP1_IRQHandler (GPIOA/GPIOB 多路中断)。
+  2. 直流电机编码器使用 GROUP1_IRQHandler (GPIOA/GPIOB 多路中断)。
      按键使用轮询模式 (Button_Task), 不占用中断。
 
   3. 超声波使用 TIMG12 硬件计数器直接读值, 不占用中断。
@@ -345,10 +402,14 @@
      PID 运算在 TIMG7 ZERO中断中执行, 周期=10ms。
 
   5. A4988 需要 12V 电源供电（可从电池直接取），信号线 3.3V/5V 兼容。
+     PTZ1 方向脚: PA12, PTZ2 方向脚: PB23 (由 A4988_SetDirection 控制)
 
-  6. 电机 PWM 频率=1kHz, 占空比范围 0~1000。
+  6. 直流电机 PWM 频率=1kHz, 占空比范围 0~1000。
      CC=0 → 100% HIGH → 全速; CC=1000 → 0% HIGH → 停止。
 
+  7. 步进电机/180°舵机/360°舵机共用 PB2(TIMA1-C0) 和 PB3(TIMG6-C1)。
+     PTZ1 和 PTZ2 各自独立选择电机类型, 每个 _Init(ch) 自配时钟, 可混用。
+     SysConfig 只需保证引脚映射(PB2→TIMA1-C0, PB3→TIMG6-C1)即可。
 ================================================================================
   版本: v2.0   日期: 2026-07   基于 SysConfig 实际生成参数
 ================================================================================

@@ -1,7 +1,7 @@
 /*
- * bsp_a4988.c - A4988 步进电机驱动 (MSPM0G3507)
+ * bsp_stepper.c - A4988 步进电机驱动 (MSPM0G3507)
  *
- * 2 通道:
+ * 2 通道, 脉冲频率控制速度:
  *   PTZ1: TIMA1 CC0 PWM (PB2) + PA12 方向
  *   PTZ2: TIMG6 CC1 PWM (PB3) + PB23 方向
  *
@@ -9,28 +9,44 @@
  * PTZ2: BUSCLK/8/100 = 40kHz, period=1000 → 40Hz 基频
  */
 
-#include "bsp_a4988.h"
+#include "bsp_stepper.h"
 
 /* ========== A4988 通道配置 ========== */
 typedef struct {
     uint8_t  enabled;
-} a4988_ch_t;
+} stepper_ch_t;
 
-static a4988_ch_t g_ptz[2];
+static stepper_ch_t g_ptz[2];
 
 /* ========== API 实现 ========== */
 
-void A4988_Init(void)
+void A4988_Init(uint8_t ch)
 {
-    /* ---- PTZ1: 初始化方向引脚 PA12 ---- */
-    DL_GPIO_clearPins(PTZ_DIR_PTZ1_DIR_PORT, PTZ_DIR_PTZ1_DIR_PIN);
+    if (ch > PTZ2) return;
 
-    /* ---- PTZ2: 初始化方向引脚 PB23 ---- */
-    DL_GPIO_clearPins(PTZ_DIR_PTZ2_DIR_PORT, PTZ_DIR_PTZ2_DIR_PIN);
+    if (ch == PTZ1) {
+        /* TIMA1: 40kHz = 32MHz/8/(99+1), period=1000, STOPPED */
+        DL_TimerA_ClockConfig clk = {
+            .clockSel    = DL_TIMER_CLOCK_BUSCLK,
+            .divideRatio = DL_TIMER_CLOCK_DIVIDE_8,
+            .prescale    = 99U
+        };
+        DL_TimerA_setClockConfig(PTZ1_PWM_INST, &clk);
+        DL_Timer_setLoadValue(PTZ1_PWM_INST, 999);
+        DL_GPIO_clearPins(PTZ_DIR_PTZ1_DIR_PORT, PTZ_DIR_PTZ1_DIR_PIN);
+    } else {
+        /* TIMG6: 40kHz = 32MHz/8/(99+1), period=1000, STOPPED */
+        DL_TimerG_ClockConfig clk = {
+            .clockSel    = DL_TIMER_CLOCK_BUSCLK,
+            .divideRatio = DL_TIMER_CLOCK_DIVIDE_8,
+            .prescale    = 99U
+        };
+        DL_TimerG_setClockConfig(PTZ2_PWM_INST, &clk);
+        DL_Timer_setLoadValue(PTZ2_PWM_INST, 999);
+        DL_GPIO_clearPins(PTZ_DIR_PTZ2_DIR_PORT, PTZ_DIR_PTZ2_DIR_PIN);
+    }
 
-    /* ---- 初始化通道状态 ---- */
-    g_ptz[PTZ1].enabled = 0;
-    g_ptz[PTZ2].enabled = 0;
+    g_ptz[ch].enabled = 0;
 }
 
 void A4988_SetDirection(uint8_t ch, uint8_t dir)

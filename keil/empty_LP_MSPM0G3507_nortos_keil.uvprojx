@@ -440,14 +440,34 @@
               <FilePath>..\bsp\board.h</FilePath>
             </File>
             <File>
-              <FileName>bsp_a4988.c</FileName>
+              <FileName>bsp_stepper.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\bsp\bsp_a4988.c</FilePath>
+              <FilePath>..\bsp\bsp_stepper.c</FilePath>
             </File>
             <File>
-              <FileName>bsp_a4988.h</FileName>
+              <FileName>bsp_stepper.h</FileName>
               <FileType>5</FileType>
-              <FilePath>..\bsp\bsp_a4988.h</FilePath>
+              <FilePath>..\bsp\bsp_stepper.h</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_servo_180.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\bsp\bsp_servo_180.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_servo_180.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bsp\bsp_servo_180.h</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_servo_360.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\bsp\bsp_servo_360.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_servo_360.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\bsp\bsp_servo_360.h</FilePath>
             </File>
             <File>
               <FileName>bsp_button.c</FileName>

@@ -3,7 +3,9 @@
  *
  * 使用的外设驱动:
  *   TB6612 + MG513直流电机 (bsp_motor)
- *   A4988 步进电机 (bsp_a4988)
+ *   A4988 步进电机 (bsp_stepper)
+ *   180°舵机 (bsp_servo_180)
+ *   360°舵机 (bsp_servo_360)
  *   MPU6050 陀螺仪 (bsp_mpu6050)
  *   OLED 0.96寸IIC屏 (soft_oled)
  *   HC-SR04 超声波 (bsp_ultrasonic)
@@ -11,6 +13,11 @@
  *   按键 2个 (bsp_button)
  *   LED 4个 (bsp_led)
  *   蜂鸣器 (bsp_buzzer)
+ *
+ * ====== 重要: PTZ1/PTZ2 各自独立选择电机类型 ======
+ * PTZ1 = PB2(TIMA1-C0), PTZ2 = PB3(TIMG6-C1), 两个通道可混用不同电机。
+ * 每个 _Init(ch) 自配该通道的定时器时钟, 调用即可, 无需改 SysConfig。
+ * SysConfig 只需保证引脚映射正确(PB2→TIMA1-C0, PB3→TIMG6-C1)。
  *
  * 注意: 7合1拨码开关是硬件直连各模块EN脚，无需MCU参与。
  *       PTZ1_EN / PTZ2_EN / MAB_EN / MCD_EN / MS1/MS2/MS3
@@ -21,7 +28,9 @@
 #include "bsp/board.h"
 #include "bsp/soft_oled.h"
 #include "bsp/bsp_motor.h"
-#include "bsp/bsp_a4988.h"
+#include "bsp/bsp_stepper.h"
+#include "bsp/bsp_servo_180.h"
+#include "bsp/bsp_servo_360.h"
 #include "bsp/bsp_mpu6050.h"
 #include "bsp/bsp_ultrasonic.h"
 #include "bsp/bsp_uart.h"
@@ -29,6 +38,25 @@
 #include "bsp/bsp_button.h"
 #include "bsp/bsp_led.h"
 #include "bsp/bsp_buzzer.h"
+
+/* ====== PTZ1 (PB2, TIMA1-C0) 选择: 步进/180°舵机/360°舵机 (只能选一个) ====== */
+#define PTZ1_STEPPER     0
+#define PTZ1_SERVO_180   0
+#define PTZ1_SERVO_360   0
+
+/* ====== PTZ2 (PB3, TIMG6-C1) 选择: 步进/180°舵机/360°舵机 (只能选一个) ====== */
+#define PTZ2_STEPPER     0
+#define PTZ2_SERVO_180   0
+#define PTZ2_SERVO_360   0
+
+/* 示例: PTZ1 用步进, PTZ2 用 180°舵机
+ * #define PTZ1_STEPPER     1
+ * #define PTZ1_SERVO_180   0
+ * #define PTZ1_SERVO_360   0
+ * #define PTZ2_STEPPER     0
+ * #define PTZ2_SERVO_180   1
+ * #define PTZ2_SERVO_360   0
+ */
 
 int main(void)
 {
@@ -41,7 +69,25 @@ int main(void)
     OLED_ShowString(0, 0, (uint8_t *)"Car Init...", 16, 1);
 
     Motor_Init();                   // 直流电机(默认启用A和C，AB/CD的硬件EN由开关控制)
-    A4988_Init();                   // 步进电机(硬件EN和微步细分由开关直连)
+
+    /* ---- PTZ1 初始化 (PB2, TIMA1-C0) ---- */
+#if PTZ1_STEPPER
+    A4988_Init(PTZ1);               // 步进电机, 40kHz脉冲
+#elif PTZ1_SERVO_180
+    Servo_Init(SERVO_PTZ1);         // 180°舵机, 50Hz PWM
+#elif PTZ1_SERVO_360
+    Servo360_Init(SERVO360_PTZ1);   // 360°舵机, 50Hz PWM
+#endif
+
+    /* ---- PTZ2 初始化 (PB3, TIMG6-C1) ---- */
+#if PTZ2_STEPPER
+    A4988_Init(PTZ2);               // 步进电机, 40kHz脉冲
+#elif PTZ2_SERVO_180
+    Servo_Init(SERVO_PTZ2);         // 180°舵机, 50Hz PWM
+#elif PTZ2_SERVO_360
+    Servo360_Init(SERVO360_PTZ2);   // 360°舵机, 50Hz PWM
+#endif
+
     MPU6050_Init();                 // 陀螺仪
     Ultrasonic_Init();              // 超声波
     LED_Init();                     // LED指示灯
@@ -71,12 +117,38 @@ int main(void)
          * 软件侧只需设置方向和PWM即可，无需额外使能操作。
          */
 
-        /* ====== 步进电机控制(硬件EN和MS细分由开关直连A4988) ====== */
+        /* ====== PTZ1 控制 ====== */
+#if PTZ1_STEPPER
         /*
-         * A4988_Enable(PTZ1);               // 软件侧开启脉冲输出
          * A4988_SetDirection(PTZ1, A4988_DIR_CW);
          * A4988_SetSpeed(PTZ1, 1000);
+         * A4988_Enable(PTZ1);
          */
+#elif PTZ1_SERVO_180
+        /*
+         * Servo_SetAngle(SERVO_PTZ1, 90);    // 转到90°
+         */
+#elif PTZ1_SERVO_360
+        /*
+         * Servo360_SetSpeed(SERVO360_PTZ1, 50);  // 正转50%, 0=Stop
+         */
+#endif
+        /* ====== PTZ2 控制 ====== */
+#if PTZ2_STEPPER
+        /*
+         * A4988_SetDirection(PTZ2, A4988_DIR_CCW);
+         * A4988_SetSpeed(PTZ2, 500);
+         * A4988_Enable(PTZ2);
+         */
+#elif PTZ2_SERVO_180
+        /*
+         * Servo_SetAngle(SERVO_PTZ2, 45);    // 转到45°
+         */
+#elif PTZ2_SERVO_360
+        /*
+         * Servo360_SetSpeed(SERVO360_PTZ2, -30);  // 反转30%
+         */
+#endif
 
         /* ====== 按键测试 ====== */
         if (Button_GetPress(0)) {   // KEY1 按下

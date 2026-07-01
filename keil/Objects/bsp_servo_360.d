@@ -1,4 +1,5 @@
-./objects/empty.o: ..\empty.c ..\..\empty\ti_msp_dl_config.h \
+./objects/bsp_servo_360.o: ..\bsp\bsp_servo_360.c ..\bsp\bsp_servo_360.h \
+  ..\bsp\board.h ..\..\empty\ti_msp_dl_config.h \
   ..\..\source\ti\devices\msp\msp.h \
   ..\..\source\ti\devices\DeviceFamily.h \
   ..\..\source\ti\devices\msp\m0p\mspm0g350x.h \
@@ -78,12 +79,4 @@
   ..\..\source\ti\driverlib\dl_vref.h \
   ..\..\source\ti\driverlib\dl_wwdt.h \
   ..\..\source\ti\driverlib\m0p\dl_interrupt.h \
-  ..\..\source\ti\driverlib\m0p\dl_systick.h ..\..\empty\bsp\board.h \
-  ..\..\empty\bsp\soft_oled.h ..\bsp\board.h \
-  D:\Keil5\ARM\ARMCLANG\Bin\..\include\stdlib.h \
-  ..\..\empty\bsp\bsp_motor.h ..\..\empty\bsp\bsp_stepper.h \
-  ..\..\empty\bsp\bsp_servo_180.h ..\..\empty\bsp\bsp_servo_360.h \
-  ..\..\empty\bsp\bsp_mpu6050.h ..\..\empty\bsp\bsp_ultrasonic.h \
-  ..\..\empty\bsp\bsp_uart.h ..\..\empty\bsp\bsp_grayscale.h \
-  ..\..\empty\bsp\bsp_button.h ..\..\empty\bsp\bsp_led.h \
-  ..\..\empty\bsp\bsp_buzzer.h
+  ..\..\source\ti\driverlib\m0p\dl_systick.h
