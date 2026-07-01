@@ -61,12 +61,15 @@ SYSCONFIG_WEAK void SYSCFG_DL_init(void)
     SYSCFG_DL_ULTRASONIC_TIMER_init();
     SYSCFG_DL_PID_TIMER_init();
     SYSCFG_DL_I2C_0_init();
+    SYSCFG_DL_UART0_init();
+    SYSCFG_DL_DMA_init();
     /* Ensure backup structures have no valid state */
 	gMOTOR_PWMBackup.backupRdy 	= false;
 	gPTZ1_PWMBackup.backupRdy 	= false;
 	gPTZ2_PWMBackup.backupRdy 	= false;
 
 	gPID_TIMERBackup.backupRdy 	= false;
+
 
 }
 /*
@@ -108,6 +111,8 @@ SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
     DL_TimerG_reset(ULTRASONIC_TIMER_INST);
     DL_TimerG_reset(PID_TIMER_INST);
     DL_I2C_reset(I2C_0_INST);
+    DL_UART_Main_reset(UART0_INST);
+
 
     DL_GPIO_enablePower(GPIOA);
     DL_GPIO_enablePower(GPIOB);
@@ -117,6 +122,8 @@ SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
     DL_TimerG_enablePower(ULTRASONIC_TIMER_INST);
     DL_TimerG_enablePower(PID_TIMER_INST);
     DL_I2C_enablePower(I2C_0_INST);
+    DL_UART_Main_enablePower(UART0_INST);
+
     delay_cycles(POWER_STARTUP_DELAY);
 }
 
@@ -148,6 +155,11 @@ SYSCONFIG_WEAK void SYSCFG_DL_GPIO_init(void)
         DL_GPIO_WAKEUP_DISABLE);
     DL_GPIO_enableHiZ(GPIO_I2C_0_IOMUX_SDA);
     DL_GPIO_enableHiZ(GPIO_I2C_0_IOMUX_SCL);
+
+    DL_GPIO_initPeripheralOutputFunction(
+        GPIO_UART0_IOMUX_TX, GPIO_UART0_IOMUX_TX_FUNC);
+    DL_GPIO_initPeripheralInputFunction(
+        GPIO_UART0_IOMUX_RX, GPIO_UART0_IOMUX_RX_FUNC);
 
     DL_GPIO_initDigitalOutput(ULTRASONIC_TRIG_IOMUX);
 
@@ -577,4 +589,83 @@ SYSCONFIG_WEAK void SYSCFG_DL_I2C_0_init(void) {
 
 
 }
+
+
+static const DL_UART_Main_ClockConfig gUART0ClockConfig = {
+    .clockSel    = DL_UART_MAIN_CLOCK_BUSCLK,
+    .divideRatio = DL_UART_MAIN_CLOCK_DIVIDE_RATIO_1
+};
+
+static const DL_UART_Main_Config gUART0Config = {
+    .mode        = DL_UART_MAIN_MODE_NORMAL,
+    .direction   = DL_UART_MAIN_DIRECTION_TX_RX,
+    .flowControl = DL_UART_MAIN_FLOW_CONTROL_NONE,
+    .parity      = DL_UART_MAIN_PARITY_NONE,
+    .wordLength  = DL_UART_MAIN_WORD_LENGTH_8_BITS,
+    .stopBits    = DL_UART_MAIN_STOP_BITS_ONE
+};
+
+SYSCONFIG_WEAK void SYSCFG_DL_UART0_init(void)
+{
+    DL_UART_Main_setClockConfig(UART0_INST, (DL_UART_Main_ClockConfig *) &gUART0ClockConfig);
+
+    DL_UART_Main_init(UART0_INST, (DL_UART_Main_Config *) &gUART0Config);
+    /*
+     * Configure baud rate by setting oversampling and baud rate divisors.
+     *  Target baud rate: 9600
+     *  Actual baud rate: 9600.24
+     */
+    DL_UART_Main_setOversampling(UART0_INST, DL_UART_OVERSAMPLING_RATE_16X);
+    DL_UART_Main_setBaudRateDivisor(UART0_INST, UART0_IBRD_32_MHZ_9600_BAUD, UART0_FBRD_32_MHZ_9600_BAUD);
+
+
+    /* Configure Interrupts */
+    DL_UART_Main_enableInterrupt(UART0_INST,
+                                 DL_UART_MAIN_INTERRUPT_DMA_DONE_RX |
+                                 DL_UART_MAIN_INTERRUPT_DMA_DONE_TX |
+                                 DL_UART_MAIN_INTERRUPT_RX_TIMEOUT_ERROR);
+
+    /* Configure DMA Receive Event */
+    DL_UART_Main_enableDMAReceiveEvent(UART0_INST, DL_UART_DMA_INTERRUPT_RX);
+    /* Configure DMA Transmit Event */
+    DL_UART_Main_enableDMATransmitEvent(UART0_INST);
+
+    DL_UART_Main_enable(UART0_INST);
+}
+
+static const DL_DMA_Config gDMA_CH0Config = {
+    .transferMode   = DL_DMA_SINGLE_TRANSFER_MODE,
+    .extendedMode   = DL_DMA_NORMAL_MODE,
+    .destIncrement  = DL_DMA_ADDR_UNCHANGED,
+    .srcIncrement   = DL_DMA_ADDR_UNCHANGED,
+    .destWidth      = DL_DMA_WIDTH_WORD,
+    .srcWidth       = DL_DMA_WIDTH_WORD,
+    .trigger        = UART0_INST_DMA_TRIGGER_0,
+    .triggerType    = DL_DMA_TRIGGER_TYPE_EXTERNAL,
+};
+
+SYSCONFIG_WEAK void SYSCFG_DL_DMA_CH0_init(void)
+{
+    DL_DMA_initChannel(DMA, DMA_CH0_CHAN_ID , (DL_DMA_Config *) &gDMA_CH0Config);
+}
+static const DL_DMA_Config gDMA_CH1Config = {
+    .transferMode   = DL_DMA_SINGLE_TRANSFER_MODE,
+    .extendedMode   = DL_DMA_NORMAL_MODE,
+    .destIncrement  = DL_DMA_ADDR_UNCHANGED,
+    .srcIncrement   = DL_DMA_ADDR_UNCHANGED,
+    .destWidth      = DL_DMA_WIDTH_WORD,
+    .srcWidth       = DL_DMA_WIDTH_WORD,
+    .trigger        = UART0_INST_DMA_TRIGGER_1,
+    .triggerType    = DL_DMA_TRIGGER_TYPE_EXTERNAL,
+};
+
+SYSCONFIG_WEAK void SYSCFG_DL_DMA_CH1_init(void)
+{
+    DL_DMA_initChannel(DMA, DMA_CH1_CHAN_ID , (DL_DMA_Config *) &gDMA_CH1Config);
+}
+SYSCONFIG_WEAK void SYSCFG_DL_DMA_init(void){
+    SYSCFG_DL_DMA_CH0_init();
+    SYSCFG_DL_DMA_CH1_init();
+}
+
 

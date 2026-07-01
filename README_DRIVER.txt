@@ -75,6 +75,12 @@
   【蜂鸣器 (有源, 低电平响)】
   BEEP: PA7
 
+  【串口 UART (不定长接收)】
+  TX: PA10   RX: PA11 (UART0, 9600bps/8N1, RX中断+RX超时帧检测)
+
+  【调试口 (SWD)】
+  SWDIO: PA19     SWCLK: PA20
+
   【7合1拨码开关 — 硬件直连, 不经过MCU GPIO】
   以下开关通过高低电平直接控制各模块的EN/使能脚:
     PTZ1_EN → A4988-1  EN脚      PTZ2_EN → A4988-2  EN脚
@@ -107,6 +113,9 @@
                   (驱动中手动读写计数器测脉宽, 不使用捕获中断)
 
   I2C_0        ── I2C0, 400kHz (MPU6050 通信)
+
+  UART_0       ── UART0, 9600bps/8N1, RX 中断 + RX 超时(20位周期≈2.08ms)
+                  不定长帧检测: RTIM 超时触发帧就绪标志
 
 ================================================================================
   四、各驱动 API 速查
@@ -206,6 +215,42 @@
   鸣叫:       Buzzer_Beep(200)                   // 鸣叫200ms(阻塞)
   多次鸣叫:   Buzzer_BeepTimes(3, 100, 50)       // 鸣3次,100ms on,50ms off
   注意:      有源蜂鸣器, 低电平响
+
+--------- 4.10 串口 (bsp_uart.h) ---------
+
+  【SysConfig 配置步骤】
+  1. 在 SysConfig GUI 中添加 UART 模块
+  2. Name: "UART_0", 选择 UART0 外设
+  3. TX Pin: PA10, RX Pin: PA11
+  4. Baud Rate: 9600, Data Bits: 8, Parity: None, Stop Bits: 1
+  5. 勾选 "Enable RX FIFO Interrupts" (接收中断)
+  6. 保存生成
+
+  初始化:     UART_Init(9600)
+  发送单字节: UART_SendByte(0xAA)
+  发送数组:   UART_SendBytes(buf, len)
+  发送字符串: UART_SendString("Hello\r\n")
+
+  【不定长接收 (帧模式)】
+  等待帧:     if (UART_IsFrameReady()) {         // 超时后帧就绪
+                  uint8_t buf[64];
+                  uint16_t len = UART_ReadFrame(buf, 64);
+                  // 处理 buf[0..len-1]
+              }
+
+  【逐字节接收】
+  可读字节数: uint16_t n = UART_Available()
+  读单字节:   uint8_t b = UART_ReadByte()
+  读多个:     uint16_t n = UART_ReadBytes(buf, 64)
+
+  清空缓冲区: UART_Flush()
+
+  【中断处理 (在 UART0_IRQHandler 中调用) */
+   void UART0_IRQHandler(void) { UART_IRQHandler(); }
+
+  注意:
+  - RX 超时用于帧检测, 发送方连续发送的数据会在间隙 > RTIM 后识别为一帧
+  - 若只需简单接收, 可直接用 UART_Available() + UART_ReadByte() 轮询
 
 ================================================================================
   五、典型应用示例

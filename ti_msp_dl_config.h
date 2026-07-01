@@ -171,6 +171,36 @@ extern "C" {
 #define GPIO_I2C_0_IOMUX_SCL_FUNC                       IOMUX_PINCM6_PF_I2C0_SCL
 
 
+/* Defines for UART0 */
+#define UART0_INST                                                         UART0
+#define UART0_INST_FREQUENCY                                            32000000
+#define UART0_INST_IRQHandler                                   UART0_IRQHandler
+#define UART0_INST_INT_IRQN                                       UART0_INT_IRQn
+#define GPIO_UART0_RX_PORT                                                 GPIOA
+#define GPIO_UART0_TX_PORT                                                 GPIOA
+#define GPIO_UART0_RX_PIN                                         DL_GPIO_PIN_11
+#define GPIO_UART0_TX_PIN                                         DL_GPIO_PIN_10
+#define GPIO_UART0_IOMUX_RX                                      (IOMUX_PINCM22)
+#define GPIO_UART0_IOMUX_TX                                      (IOMUX_PINCM21)
+#define GPIO_UART0_IOMUX_RX_FUNC                       IOMUX_PINCM22_PF_UART0_RX
+#define GPIO_UART0_IOMUX_TX_FUNC                       IOMUX_PINCM21_PF_UART0_TX
+#define UART0_BAUD_RATE                                                   (9600)
+#define UART0_IBRD_32_MHZ_9600_BAUD                                        (208)
+#define UART0_FBRD_32_MHZ_9600_BAUD                                         (21)
+
+
+
+
+
+/* Defines for DMA_CH0 */
+#define DMA_CH0_CHAN_ID                                                      (1)
+#define UART0_INST_DMA_TRIGGER_0                             (DMA_UART0_RX_TRIG)
+
+/* Defines for DMA_CH1 */
+#define DMA_CH1_CHAN_ID                                                      (0)
+#define UART0_INST_DMA_TRIGGER_1                             (DMA_UART0_TX_TRIG)
+
+
 
 /* Port definition for Pin Group ULTRASONIC */
 #define ULTRASONIC_PORT                                                  (GPIOB)
@@ -360,6 +390,8 @@ void SYSCFG_DL_PTZ2_PWM_init(void);
 void SYSCFG_DL_ULTRASONIC_TIMER_init(void);
 void SYSCFG_DL_PID_TIMER_init(void);
 void SYSCFG_DL_I2C_0_init(void);
+void SYSCFG_DL_UART0_init(void);
+void SYSCFG_DL_DMA_init(void);
 
 
 bool SYSCFG_DL_saveConfiguration(void);

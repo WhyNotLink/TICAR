@@ -24,6 +24,7 @@
 #include "bsp/bsp_a4988.h"
 #include "bsp/bsp_mpu6050.h"
 #include "bsp/bsp_ultrasonic.h"
+#include "bsp/bsp_uart.h"
 #include "bsp/bsp_grayscale.h"
 #include "bsp/bsp_button.h"
 #include "bsp/bsp_led.h"
@@ -46,6 +47,7 @@ int main(void)
     LED_Init();                     // LED指示灯
     Buzzer_Init();                  // 蜂鸣器
     Button_Init();                  // 按键
+    UART_Init(9600);                // 串口
     /* Grayscale 由 SYSCFG_DL_GPIO_init 自动初始化 */
 
     /* ---- 启动提示 ---- */
@@ -85,6 +87,22 @@ int main(void)
             LED_Toggle(LED2);
         }
 
+        /* ====== 串口收发示例 ====== */
+        /*
+         * 不定长接收: 串口助手发送任意数据, RX超时后 frame_ready=1
+         * 支持逐字节接收: UART_Available() + UART_ReadByte()
+         * 支持帧接收:     UART_IsFrameReady() + UART_ReadFrame()
+         */
+        if (UART_IsFrameReady()) {
+            uint8_t buf[UART_RX_BUF_SIZE];
+            uint16_t len = UART_ReadFrame(buf, sizeof(buf));
+
+            /* 回显接收到的数据 */
+            UART_SendString("[RX ");
+            UART_SendBytes(buf, len);
+            UART_SendString("]\r\n");
+        }
+
         /* ====== 传感器读取 ====== */
         MPU6050_Update();                   // 更新IMU数据
         float dist = Ultrasonic_GetDistance();  // 超声波测距
@@ -107,7 +125,14 @@ int main(void)
 /*
  * 中断说明:
  *
- *   TIMG7_IRQHandler   → bsp_motor.c 已实现 (PID 20ms定时)
-  *   GROUP1_IRQHandler  → bsp_motor.c 已实现 (编码器中断)
-  *   超声波使用 TIMG12 硬件计数器轮询，不占用中断。
+ *   TIMG7_IRQHandler   → bsp_motor.c 已实现 (PID 10ms定时)
+ *   GROUP1_IRQHandler  → bsp_motor.c 已实现 (编码器中断)
+ *   UART0_IRQHandler   → bsp_uart.c  已实现 (RX DMA + 超时帧检测)
+ *   超声波使用 TIMG12 硬件计数器轮询，不占用中断。
  */
+
+/* ---- UART RX DMA/超时中断 ---- */
+void UART0_IRQHandler(void)
+{
+    UART_IRQHandler();
+}

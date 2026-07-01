@@ -12,6 +12,7 @@
 ".\objects\bsp_mpu6050.o"
 ".\objects\bsp_ultrasonic.o"
 ".\objects\soft_oled.o"
+".\objects\bsp_uart.o"
 --strict --scatter "./mspm0g3507.sct"
 ../../source/ti/driverlib/lib/keil/m0p/mspm0g1x0x_g3x0x/driverlib.a --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
