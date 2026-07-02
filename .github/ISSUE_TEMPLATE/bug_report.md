@@ -1,7 +1,7 @@
 ---
 name: Bug report
 about: 请按照流程提交issue
-title: ''
+title: "[BUG] "
 labels: bug
 assignees: ''
 
